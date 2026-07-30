@@ -331,10 +331,70 @@ footer {visibility: hidden;}
 """
 
 
+# Dark theme. Runtime-toggleable, so it is injected as CSS overrides rather than
+# via the static config.toml theme (which cannot change without a restart).
+# Scoped to Streamlit's real containers so it overrides the light base cleanly.
+DARK_MODE_CSS = """
+<style>
+[data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+    background-color: #0E1117 !important;
+}
+[data-testid="stSidebar"] {
+    background-color: #161A23 !important;
+}
+[data-testid="stAppViewContainer"] .stMarkdown,
+[data-testid="stAppViewContainer"] p,
+[data-testid="stAppViewContainer"] span,
+[data-testid="stAppViewContainer"] label,
+[data-testid="stAppViewContainer"] li,
+[data-testid="stSidebar"] * {
+    color: #E6E6E6 !important;
+}
+[data-testid="stAppViewContainer"] h1,
+[data-testid="stAppViewContainer"] h2,
+[data-testid="stAppViewContainer"] h3,
+[data-testid="stAppViewContainer"] h4 {
+    color: #F5F5F5 !important;
+}
+[data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
+    color: #E6E6E6 !important;
+}
+/* Cards and surfaces */
+.feature-card, .stat-item, .quiz-card {
+    background: #1E222B !important;
+    border-color: #2C313C !important;
+}
+.mastery-bar, .xp-bar {
+    background: #2C313C !important;
+}
+/* Inputs and selects */
+[data-testid="stAppViewContainer"] input,
+[data-testid="stAppViewContainer"] textarea,
+[data-baseweb="select"] > div,
+[data-baseweb="input"] > div {
+    background-color: #1E222B !important;
+    color: #E6E6E6 !important;
+}
+/* Expanders */
+[data-testid="stExpander"] {
+    background: #161A23 !important;
+    border-color: #2C313C !important;
+}
+</style>
+"""
+
+
 def inject_css():
     """Inject custom CSS into the Streamlit app."""
     import streamlit as st
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+def inject_dark_mode_css():
+    """Inject the dark theme when the user has enabled Dark Mode in the sidebar."""
+    import streamlit as st
+    if st.session_state.get("dark_mode"):
+        st.markdown(DARK_MODE_CSS, unsafe_allow_html=True)
 
 
 def render_hero():

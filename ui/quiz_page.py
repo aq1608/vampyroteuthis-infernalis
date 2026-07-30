@@ -84,22 +84,31 @@ def _handle_submission(question: dict, answer: str, within_time: bool = True):
     return is_correct, adaptation, xp_earned
 
 
-def _render_timer():
-    """Render the countdown timer if timer mode is enabled."""
-    if not st.session_state.timer_enabled:
-        return True  # Always within time if timer disabled
+@st.fragment(run_every=1)
+def _render_timer(idx: int, total_seconds: int):
+    """
+    Live countdown for the current question, refreshed once per second.
 
-    idx = st.session_state.current_question_idx
-    timer_key = f"timer_start_{idx}"
+    Runs as a fragment so only the timer re-renders each tick (not the whole
+    page). When it hits zero it flags the question as timed-out and triggers a
+    full app rerun, which lets render_quiz_page auto-submit the answer.
+    """
+    # Freeze once the question has been answered.
+    if st.session_state.get(f"feedback_shown_{idx}"):
+        return
 
-    # Initialize timer for this question
-    if timer_key not in st.session_state:
-        st.session_state[timer_key] = time.time()
+    start = st.session_state.get(f"timer_start_{idx}")
+    if start is None:
+        start = time.time()
+        st.session_state[f"timer_start_{idx}"] = start
 
-    elapsed = time.time() - st.session_state[timer_key]
-    remaining = max(0, st.session_state.timer_seconds - int(elapsed))
+    remaining = max(0, total_seconds - int(time.time() - start))
 
-    # Display timer
+    if remaining <= 0:
+        st.session_state[f"time_up_{idx}"] = True
+        st.rerun(scope="app")
+        return
+
     if remaining <= 5:
         st.markdown(
             f'<div class="timer-container">'
@@ -108,11 +117,8 @@ def _render_timer():
             unsafe_allow_html=True,
         )
     else:
-        progress = remaining / st.session_state.timer_seconds
-        st.progress(progress)
+        st.progress(remaining / total_seconds)
         st.caption(f"Time remaining: {remaining}s")
-
-    return remaining > 0
 
 
 def _render_gamification_status():
@@ -182,23 +188,36 @@ def render_quiz_page():
             unsafe_allow_html=True,
         )
 
-    # Timer
-    within_time = _render_timer()
+    feedback_key = f"feedback_shown_{current_idx}"
+    timer_enabled = st.session_state.timer_enabled
+    time_up = timer_enabled and st.session_state.get(f"time_up_{current_idx}", False)
+
+    # Timer: live countdown only while the question is still unanswered and time
+    # has not already expired (once expired we fall straight through to the
+    # auto-submit below instead of re-rendering the ticking fragment).
+    if timer_enabled and not st.session_state.get(feedback_key) and not time_up:
+        _render_timer(current_idx, st.session_state.timer_seconds)
 
     st.divider()
 
     # Render the question
     answer = _render_question(current_question)
 
-    # Check if already answered this question
-    feedback_key = f"feedback_shown_{current_idx}"
-
-    # Submit button
+    # Submit / auto-submit
     if not st.session_state.get(feedback_key):
-        if st.button("Submit Answer", type="primary",
-                     disabled=(answer is None or answer == "")):
+        if time_up:
+            # Time expired: auto-submit whatever is currently selected (may be
+            # empty, which evaluates as incorrect). No speed bonus.
+            current_answer = st.session_state.get(f"answer_{current_idx}") or ""
+            _handle_submission(current_question, current_answer, within_time=False)
+            st.warning("Time's up! Moving on.")
+            st.session_state[feedback_key] = True
+            st.rerun()
+
+        elif st.button("Submit Answer", type="primary",
+                       disabled=(answer is None or answer == "")):
             is_correct, adaptation, xp_earned = _handle_submission(
-                current_question, answer, within_time
+                current_question, answer, within_time=True
             )
 
             if is_correct:

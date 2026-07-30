@@ -205,6 +205,12 @@ def _start_sample_quiz():
     st.session_state.current_question_idx = 0
     st.session_state.answers = []
     st.session_state.quiz_complete = False
+    st.session_state.path_context = None
+    st.session_state.imported_quiz_data = None
+    st.session_state.results_recorded = False
+    st.session_state.badges_at_quiz_start = list(
+        st.session_state.gamification.badges_earned
+    )
     st.session_state.onboarding_complete = True
     st.session_state.page = "quiz"
     st.rerun()

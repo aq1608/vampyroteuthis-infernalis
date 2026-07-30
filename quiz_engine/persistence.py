@@ -14,12 +14,14 @@ from datetime import datetime
 
 from quiz_engine.gamification import GamificationEngine
 from quiz_engine.spaced_repetition import SpacedRepetitionEngine
+from quiz_engine.analytics import AnalyticsEngine
 
 
 def export_progress(
     gamification: GamificationEngine,
     spaced_rep: SpacedRepetitionEngine,
     quiz_history: list[dict] | None = None,
+    analytics: AnalyticsEngine | None = None,
 ) -> str:
     """
     Export all progress data as a JSON string.
@@ -28,6 +30,7 @@ def export_progress(
         gamification: GamificationEngine instance.
         spaced_rep: SpacedRepetitionEngine instance.
         quiz_history: Optional list of past quiz summaries.
+        analytics: Optional AnalyticsEngine instance.
 
     Returns:
         JSON string of all progress data.
@@ -38,6 +41,7 @@ def export_progress(
         "gamification": gamification.to_dict(),
         "spaced_repetition": spaced_rep.to_dict(),
         "quiz_history": quiz_history or [],
+        "analytics": analytics.to_dict() if analytics else {},
     }
     return json.dumps(data, indent=2)
 
@@ -62,11 +66,13 @@ def import_progress(json_string: str) -> dict:
         data.get("spaced_repetition", {})
     )
     quiz_history = data.get("quiz_history", [])
+    analytics = AnalyticsEngine.from_dict(data.get("analytics", {}))
 
     return {
         "gamification": gamification,
         "spaced_repetition": spaced_rep,
         "quiz_history": quiz_history,
+        "analytics": analytics,
     }
 
 

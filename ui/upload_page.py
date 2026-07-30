@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import base64
 import os
+import time
 import streamlit as st
 
+from quiz_engine.collaborative import import_quiz_code
 from quiz_engine.content_parser import parse_pdf, parse_text
 from quiz_engine.question_generator import generate_full_quiz
 from quiz_engine.adaptive_logic import AdaptiveEngine
@@ -139,6 +141,7 @@ def _begin_quiz(
     questions: list[dict],
     content: str | None = None,
     path_context: dict | None = None,
+    imported_quiz_data: dict | None = None,
 ):
     """
     Set up session state for a new quiz and navigate to it.
@@ -156,9 +159,19 @@ def _begin_quiz(
     st.session_state.current_question_idx = 0
     st.session_state.answers = []
     st.session_state.quiz_complete = False
+    # New quiz: allow its results to be recorded once when it finishes, and
+    # snapshot the badges already owned so results can show only new ones.
+    st.session_state.results_recorded = False
+    st.session_state.badges_at_quiz_start = list(
+        st.session_state.gamification.badges_earned
+    )
+    st.session_state.quiz_start_time = time.time()
 
     # Track guided-path context (or clear it for non-curriculum quizzes)
     st.session_state.path_context = path_context
+    # Shared-quiz data (carries a leaderboard) when launched from a quiz code,
+    # or None for a locally-created quiz.
+    st.session_state.imported_quiz_data = imported_quiz_data
 
     st.session_state.page = "quiz"
     st.rerun()
@@ -208,6 +221,31 @@ def _render_review_section():
 
 
 
+def _render_shared_quiz_section():
+    """Render the 'play a shared quiz' loader (collaborative mode)."""
+    with st.expander("Play a shared quiz"):
+        st.caption(
+            "Paste a quiz code a friend shared to take the exact same quiz and "
+            "add your score to its leaderboard. No API key needed."
+        )
+        code = st.text_input(
+            "Shared quiz code",
+            key="shared_code_input",
+            placeholder="QUIZ-XXXXXXXX-...",
+        )
+        if code and st.button("Load shared quiz", key="btn_load_shared"):
+            quiz_data = import_quiz_code(code.strip())
+            if not quiz_data or not quiz_data.get("questions"):
+                st.error("That doesn't look like a valid quiz code.")
+            else:
+                _begin_quiz(
+                    concepts=quiz_data.get("concepts", []),
+                    questions=quiz_data["questions"],
+                    content=quiz_data.get("source_description", "Shared quiz"),
+                    imported_quiz_data=quiz_data,
+                )
+
+
 def _render_import_section():
     """Render progress import section."""
     with st.expander("Import Progress"):
@@ -223,6 +261,7 @@ def _render_import_section():
                 st.session_state.gamification = data["gamification"]
                 st.session_state.spaced_rep = data["spaced_repetition"]
                 st.session_state.quiz_history = data["quiz_history"]
+                st.session_state.analytics = data["analytics"]
                 st.success("Progress loaded successfully!")
                 st.rerun()
             except Exception as e:
@@ -538,7 +577,11 @@ def render_upload_page():
             if not _configure_gemini():
                 st.error("Please enter your Gemini API key above.")
                 return
-            content = parse_pdf(uploaded_file)
+            try:
+                content = parse_pdf(uploaded_file)
+            except Exception as e:  # noqa: BLE001 - surface a friendly message
+                st.error(f"Could not read this PDF (it may be scanned or encrypted). {e}")
+                return
             if content.strip():
                 _process_content(content)
             else:
@@ -587,6 +630,7 @@ def render_upload_page():
                 return
             _process_content(content)
 
-    # Import section at bottom
+    # Shared quiz + import sections at bottom
     st.divider()
+    _render_shared_quiz_section()
     _render_import_section()

@@ -16,6 +16,32 @@ from quiz_engine.ai_tutor import (
 )
 
 
+def _reply_to_pending_user_message(engine):
+    """Generate and append a tutor reply if the last message is from the user."""
+    messages = st.session_state.tutor_messages
+    if not messages or messages[-1]["role"] != "user":
+        return
+
+    concept_states = engine.concept_states if engine else {}
+    system_context = create_tutor_context(
+        content=st.session_state.get("content", ""),
+        concept_states=concept_states,
+        language=st.session_state.get("language", "English"),
+    )
+
+    with st.spinner("Thinking..."):
+        response = chat_with_tutor(
+            messages=messages,
+            system_context=system_context,
+        )
+
+    st.session_state.tutor_messages.append({
+        "role": "assistant",
+        "content": response,
+    })
+    st.rerun()
+
+
 def render_tutor_page():
     """Render the AI tutor chat interface."""
 
@@ -62,39 +88,16 @@ def render_tutor_page():
     user_input = st.chat_input("Ask the tutor a question...")
 
     if user_input:
-        # Add user message
         st.session_state.tutor_messages.append({
             "role": "user",
             "content": user_input,
         })
-
-        # Generate tutor context
-        content = st.session_state.get("content", "")
-        concept_states = {}
-        if engine:
-            concept_states = engine.concept_states
-        language = st.session_state.get("language", "English")
-
-        system_context = create_tutor_context(
-            content=content,
-            concept_states=concept_states,
-            language=language,
-        )
-
-        # Get tutor response
-        with st.spinner("Thinking..."):
-            response = chat_with_tutor(
-                messages=st.session_state.tutor_messages,
-                system_context=system_context,
-            )
-
-        # Add tutor response
-        st.session_state.tutor_messages.append({
-            "role": "assistant",
-            "content": response,
-        })
-
         st.rerun()
+
+    # Generate a reply whenever the latest message is an unanswered user turn.
+    # This covers BOTH the chat input above and the quick-help concept buttons
+    # (which previously added a question that never got a response).
+    _reply_to_pending_user_message(engine)
 
     # Navigation
     st.divider()

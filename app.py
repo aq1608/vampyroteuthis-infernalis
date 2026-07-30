@@ -14,7 +14,7 @@ import os
 import streamlit as st
 from dotenv import load_dotenv
 
-from ui.styles import inject_css
+from ui.styles import inject_css, inject_dark_mode_css
 from ui.accessibility import render_accessibility_settings, inject_accessibility_css
 from ui.onboarding import should_show_onboarding, render_onboarding
 from ui.upload_page import render_upload_page
@@ -33,21 +33,25 @@ load_dotenv()
 
 def _bridge_secrets_to_env():
     """
-    Make the Gemini API key available via os.environ.
+    Copy configured secrets into os.environ.
 
-    On Streamlit Community Cloud the key is provided through st.secrets.
-    All quiz_engine modules read it with os.getenv("GEMINI_API_KEY"), so we
-    copy it into the environment once at startup. Wrapped in try/except
-    because st.secrets raises if no secrets file/config exists locally.
+    On Streamlit Community Cloud these come from st.secrets; the quiz_engine
+    modules read them with os.getenv(...), so we copy them into the environment
+    once at startup. Each lookup is wrapped in try/except because st.secrets
+    raises if no secrets file/config exists locally.
+
+    - GEMINI_API_KEY: required for AI features (or pasted in the UI).
+    - SUPABASE_URL / SUPABASE_KEY: optional, enable the live shared leaderboard.
     """
-    if os.getenv("GEMINI_API_KEY"):
-        return
-    try:
-        if "GEMINI_API_KEY" in st.secrets:
-            os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
-    except Exception:
-        # No secrets configured; the user can still paste a key in the UI.
-        pass
+    for key in ("GEMINI_API_KEY", "SUPABASE_URL", "SUPABASE_KEY"):
+        if os.getenv(key):
+            continue
+        try:
+            if key in st.secrets:
+                os.environ[key] = st.secrets[key]
+        except Exception:
+            # No secrets configured; features degrade gracefully.
+            pass
 
 
 _bridge_secrets_to_env()
@@ -55,7 +59,7 @@ _bridge_secrets_to_env()
 # Page configuration
 st.set_page_config(
     page_title="Adaptive Quiz Generator",
-    page_icon="brain",
+    page_icon="\U0001F9E0",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
@@ -78,6 +82,9 @@ def init_session_state():
         "answers": [],
         "adaptive_engine": None,
         "quiz_complete": False,
+        # Set True once a quiz's results have been recorded, so the scoring
+        # side effects run exactly once (not on every results-page rerun).
+        "results_recorded": False,
         # Guided curriculum path
         "path_context": None,          # {"path": name, "topic": name} for current quiz
         "completed_topics": {},        # path_name -> list of completed topic names
@@ -85,6 +92,7 @@ def init_session_state():
         "language": "English",
         "timer_enabled": False,
         "timer_seconds": 30,
+        "dark_mode": False,
         # Gamification
         "gamification": GamificationEngine(),
         # Spaced repetition
@@ -100,6 +108,8 @@ def init_session_state():
         "tutor_messages": [],
         # Collaborative
         "player_name": "Player",
+        "imported_quiz_data": None,   # Shared quiz being played (carries leaderboard)
+        "quiz_start_time": None,      # For leaderboard time tracking
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -155,13 +165,27 @@ def render_sidebar():
         st.divider()
         st.markdown("### Settings")
 
+        languages = [
+            "English", "Spanish", "French", "German", "Portuguese",
+            "Italian", "Japanese", "Korean", "Chinese", "Hindi",
+            "Arabic", "Russian",
+        ]
+        # Reflect the current language (e.g. after importing progress) instead
+        # of always defaulting the dropdown back to English on first render.
+        current_language = st.session_state.get("language", "English")
+        if current_language not in languages:
+            current_language = "English"
         st.session_state.language = st.selectbox(
             "Quiz Language",
-            ["English", "Spanish", "French", "German", "Portuguese",
-             "Italian", "Japanese", "Korean", "Chinese", "Hindi",
-             "Arabic", "Russian"],
-            index=0,
+            languages,
+            index=languages.index(current_language),
             key="lang_select",
+        )
+
+        st.session_state.dark_mode = st.toggle(
+            "Dark Mode",
+            value=st.session_state.get("dark_mode", False),
+            key="dark_mode_toggle",
         )
 
         st.session_state.timer_enabled = st.toggle(
@@ -191,16 +215,17 @@ def main():
     """Main application entry point."""
     init_session_state()
 
-    # Inject accessibility CSS
-    inject_accessibility_css()
-
     # Show onboarding for first-time users
     if should_show_onboarding():
         render_onboarding()
         return
 
-    # Render sidebar
+    # Render sidebar first so its toggles update session state, THEN inject the
+    # theme/accessibility CSS from those fresh values. (Injecting before the
+    # sidebar made every toggle take effect only on the next rerun.)
     render_sidebar()
+    inject_dark_mode_css()
+    inject_accessibility_css()
 
     # Route to the correct page
     page = st.session_state.page

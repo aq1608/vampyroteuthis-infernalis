@@ -46,7 +46,11 @@ Upload any study material — a PDF, pasted text, or just a topic — and the AI
 
 ### Quality of Life
 - **Multi-language** — Generate quizzes in 12 languages (English, Spanish, French, German, etc.)
-- **Timer Mode** — Optional countdown timer per question for exam simulation
+- **Timer Mode** — Optional live countdown per question for exam simulation
+- **Dark Mode** — Toggle a dark theme from the sidebar
+- **Accessibility** — High-contrast, dyslexia-friendly font, large text, and reduced-motion options
+- **Collaborative quizzes** — Share a quiz code so others can take the exact same quiz
+- **Leaderboards** — A live shared leaderboard (via Supabase) when configured, or an offline code-passing leaderboard otherwise
 - **Beautiful UI** — Custom-styled with gradient branding, animations, and Plotly charts
 - **Zero Cost** — Runs entirely on Gemini's free tier
 
@@ -99,6 +103,25 @@ streamlit run app.py
 The app will open at `http://localhost:8501`.
 
 You can also enter your API key directly in the app sidebar.
+
+### Optional: Live Shared Leaderboard (Supabase)
+
+By default, shared-quiz leaderboards use an offline "code-passing" model (players
+swap updated quiz codes). To get a **live, always-current shared leaderboard**
+instead:
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In the project's **SQL Editor**, run the script in
+   [`supabase_schema.sql`](supabase_schema.sql) (creates the `quiz_scores` table
+   and its public read/insert policies).
+3. Add your credentials to `.env` (local) or Streamlit secrets (cloud):
+   ```
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_KEY=your_supabase_anon_key
+   ```
+   Use the public **anon** key — Row Level Security keeps it safe for client use.
+
+If these aren't set, the app automatically falls back to the offline leaderboard.
 
 ---
 

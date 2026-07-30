@@ -13,6 +13,38 @@ import base64
 from datetime import datetime
 
 
+def compute_quiz_id(questions: list[dict]) -> str:
+    """
+    Deterministic id for a quiz, derived from its questions.
+
+    Stable across users and machines (no timestamps), so everyone playing the
+    same shared quiz maps to the same live-leaderboard key.
+    """
+    canonical = json.dumps(questions, sort_keys=True, separators=(",", ":"))
+    return hashlib.md5(canonical.encode()).hexdigest()[:12]
+
+
+def encode_quiz_data(quiz_data: dict) -> str:
+    """
+    Encode an existing quiz-data dict into a shareable code.
+
+    Unlike generate_quiz_code, this preserves whatever the dict already
+    contains (notably its leaderboard), so an updated code can be passed back
+    after a player adds their score.
+
+    Args:
+        quiz_data: A quiz-data dict (as produced by generate_quiz_code /
+            import_quiz_code).
+
+    Returns:
+        A "QUIZ-<id>-<base64>" shareable code string.
+    """
+    json_str = json.dumps(quiz_data, separators=(",", ":"))
+    encoded = base64.b64encode(json_str.encode()).decode()
+    short_id = hashlib.md5(json_str.encode()).hexdigest()[:8].upper()
+    return f"QUIZ-{short_id}-{encoded}"
+
+
 def generate_quiz_code(
     content_source: str,
     questions: list[dict],
@@ -21,7 +53,7 @@ def generate_quiz_code(
     language: str = "English",
 ) -> str:
     """
-    Generate a shareable quiz code containing all quiz data.
+    Generate a shareable quiz code for a brand-new (empty-leaderboard) quiz.
 
     Args:
         content_source: Brief description of the source material.
@@ -43,14 +75,7 @@ def generate_quiz_code(
         "questions": questions,
         "leaderboard": [],
     }
-
-    json_str = json.dumps(quiz_data, separators=(",", ":"))
-    encoded = base64.b64encode(json_str.encode()).decode()
-
-    # Create a short ID from hash
-    short_id = hashlib.md5(json_str.encode()).hexdigest()[:8].upper()
-
-    return f"QUIZ-{short_id}-{encoded}"
+    return encode_quiz_data(quiz_data)
 
 
 

@@ -13,67 +13,62 @@ from __future__ import annotations
 import streamlit as st
 
 
-ACCESSIBILITY_CSS = """
-<style>
-/* ===== High Contrast Mode ===== */
-.high-contrast {{
-    --bg-primary: #000000 !important;
-    --text-primary: #FFFFFF !important;
-    --bg-card: #1A1A1A !important;
-    --border-color: #FFFFFF !important;
-}}
+# Each block targets Streamlit's real DOM containers directly, so it applies as
+# soon as it is injected - no body class and no JavaScript required. (Streamlit
+# strips <script> tags from st.markdown, so the previous JS-based class toggle
+# never actually took effect.)
+_APP = '[data-testid="stAppViewContainer"]'
+_SIDEBAR = '[data-testid="stSidebar"]'
 
-.high-contrast .stApp {{
+HIGH_CONTRAST_CSS = f"""
+{_APP}, {_SIDEBAR}, [data-testid="stHeader"] {{
     background-color: #000000 !important;
-    color: #FFFFFF !important;
 }}
-
-.high-contrast .stMarkdown, .high-contrast p, .high-contrast span {{
+{_APP} *, {_SIDEBAR} * {{
     color: #FFFFFF !important;
+    border-color: #FFFFFF !important;
 }}
-
-.high-contrast .stButton > button {{
+{_APP} .stButton > button, {_SIDEBAR} .stButton > button {{
     background: #FFFFFF !important;
     color: #000000 !important;
     border: 2px solid #FFFFFF !important;
 }}
+"""
 
-/* ===== Dyslexia-Friendly Font ===== */
-.dyslexia-font * {{
+# The @import is emitted in its own <style> tag (a CSS @import is only honored
+# at the very top of a stylesheet, and this block may be concatenated after
+# others), so keep the font-family rules separate from the import itself.
+DYSLEXIA_FONT_IMPORT = (
+    "<style>@import url('https://fonts.cdnfonts.com/css/opendyslexic');</style>"
+)
+
+DYSLEXIA_FONT_CSS = f"""
+{_APP} *, {_SIDEBAR} * {{
     font-family: 'OpenDyslexic', 'Comic Sans MS', sans-serif !important;
     letter-spacing: 0.05em !important;
     word-spacing: 0.1em !important;
     line-height: 1.8 !important;
 }}
+"""
 
-/* ===== Large Text Mode ===== */
-.large-text .stMarkdown p,
-.large-text .stMarkdown li {{
+LARGE_TEXT_CSS = f"""
+{_APP} .stMarkdown p, {_APP} .stMarkdown li,
+{_SIDEBAR} .stMarkdown p, {_SIDEBAR} .stMarkdown li {{
     font-size: 1.2rem !important;
 }}
-
-.large-text .stRadio label {{
+{_APP} .stRadio label, {_SIDEBAR} .stRadio label {{
     font-size: 1.1rem !important;
 }}
-
-.large-text .stTextInput input {{
+{_APP} .stTextInput input, {_APP} .stTextArea textarea {{
     font-size: 1.1rem !important;
 }}
+"""
 
-/* ===== Reduced Animations ===== */
-.reduced-motion * {{
+REDUCED_MOTION_CSS = f"""
+{_APP} *, {_SIDEBAR} * {{
     animation: none !important;
     transition: none !important;
 }}
-</style>
-
-{font_import}
-"""
-
-DYSLEXIC_FONT_IMPORT = """
-<style>
-@import url('https://fonts.cdnfonts.com/css/opendyslexic');
-</style>
 """
 
 
@@ -115,31 +110,29 @@ def render_accessibility_settings():
 
 
 def inject_accessibility_css():
-    """Inject accessibility CSS based on current settings."""
-    classes = []
+    """
+    Inject accessibility CSS based on the current sidebar settings.
+
+    Only the enabled blocks are emitted, each already scoped to Streamlit's real
+    containers, so the styles take effect immediately with no JavaScript.
+    """
+    blocks = []
 
     if st.session_state.get("a11y_high_contrast"):
-        classes.append("high-contrast")
+        blocks.append(HIGH_CONTRAST_CSS)
     if st.session_state.get("a11y_dyslexia_font"):
-        classes.append("dyslexia-font")
+        # Font @import first, in its own tag, so it is always honored.
+        st.markdown(DYSLEXIA_FONT_IMPORT, unsafe_allow_html=True)
+        blocks.append(DYSLEXIA_FONT_CSS)
     if st.session_state.get("a11y_large_text"):
-        classes.append("large-text")
+        blocks.append(LARGE_TEXT_CSS)
     if st.session_state.get("a11y_reduced_motion"):
-        classes.append("reduced-motion")
+        blocks.append(REDUCED_MOTION_CSS)
 
-    font_import = ""
-    if st.session_state.get("a11y_dyslexia_font"):
-        font_import = DYSLEXIC_FONT_IMPORT
+    if not blocks:
+        return
 
-    css = ACCESSIBILITY_CSS.format(font_import=font_import)
-    st.markdown(css, unsafe_allow_html=True)
-
-    # Apply classes to body via JS
-    if classes:
-        class_str = " ".join(classes)
-        st.markdown(
-            f"""<script>
-            document.querySelector('.stApp').className += ' {class_str}';
-            </script>""",
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        "<style>\n" + "\n".join(blocks) + "\n</style>",
+        unsafe_allow_html=True,
+    )
