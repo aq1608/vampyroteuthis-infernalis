@@ -10,11 +10,54 @@ Handles:
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
+import re
 from google import genai
 
 from quiz_engine.llm import get_model
+
+
+# Leading option labels like "A)", "A.", "(A)", "1.", "1)" that models sometimes
+# add to an option or the correct answer (but not consistently to both).
+_OPTION_PREFIX_RE = re.compile(r"^\s*[\(\[]?[A-Za-z0-9][\)\].:]\s+")
+
+
+def _strip_option_prefix(text: str) -> str:
+    """Drop a leading 'A)'-style label so 'A) Energy' compares to 'Energy'."""
+    return _OPTION_PREFIX_RE.sub("", (text or "").strip()).strip()
+
+
+def closest_option(value: str, options: list[str]) -> str | None:
+    """
+    Return the option string that best matches `value`, or None if none is close.
+
+    Tolerates the ways an AI's correct_answer can drift from the option text:
+    exact, case/whitespace, label-prefix differences, then a strict fuzzy match.
+    """
+    if not options:
+        return None
+    value = (value or "").strip()
+
+    for option in options:               # exact
+        if option == value:
+            return option
+
+    lowered = value.lower()
+    for option in options:               # case / whitespace insensitive
+        if option.strip().lower() == lowered:
+            return option
+
+    stripped = _strip_option_prefix(value).lower()
+    for option in options:               # ignore "A)"-style labels on either side
+        if _strip_option_prefix(option).lower() == stripped:
+            return option
+
+    # Fuzzy, case-insensitive, as a last resort (near-duplicates only).
+    lowered = {option.strip().lower(): option for option in options}
+    matches = difflib.get_close_matches(value.lower(), list(lowered), n=1, cutoff=0.8)
+    return lowered[matches[0]] if matches else None
 
 
 EXPLANATION_PROMPT = """The student answered a quiz question incorrectly.
@@ -87,9 +130,24 @@ def evaluate_answer(question: dict, student_answer: str) -> dict:
     correct = question["correct_answer"]
     q_type = question.get("type", "mcq")
 
-    # For MCQ and True/False: exact match (case-insensitive)
-    if q_type in ("mcq", "true_false"):
-        is_correct = student_answer.strip().lower() == correct.strip().lower()
+    # MCQ: the student picks an exact option, but the model's stored correct_answer
+    # may not match an option verbatim. Canonicalize both to real options so a
+    # right pick is never marked wrong (safety net; generated quizzes are also
+    # repaired at creation time).
+    if q_type == "mcq":
+        options = question.get("options", [])
+        canonical_correct = closest_option(correct, options) or correct
+        student_match = closest_option(student_answer, options) or student_answer
+        is_correct = student_match.strip().lower() == canonical_correct.strip().lower()
+        return {
+            "is_correct": is_correct,
+            "correct_answer": canonical_correct,
+            "student_answer": student_answer,
+        }
+
+    # True/False: exact match (case-insensitive)
+    if q_type == "true_false":
+        is_correct = student_answer.strip().lower() == str(correct).strip().lower()
         return {
             "is_correct": is_correct,
             "correct_answer": correct,

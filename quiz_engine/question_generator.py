@@ -10,6 +10,28 @@ from __future__ import annotations
 import json
 
 from quiz_engine.llm import generate_text, get_model
+from quiz_engine.evaluator import closest_option
+
+
+def _repair_mcq_answers(questions: list[dict]) -> list[dict]:
+    """
+    Align each MCQ's correct_answer with an actual option.
+
+    Models occasionally return a correct_answer that doesn't verbatim match any
+    option (label prefixes, casing, slight rewording), which would make a right
+    pick score wrong and show a "correct answer" that isn't one of the choices.
+    Repairing here keeps grading and display consistent.
+    """
+    for q in questions:
+        if q.get("type") != "mcq":
+            continue
+        options = q.get("options", [])
+        correct = q.get("correct_answer", "")
+        if options and correct not in options:
+            match = closest_option(correct, options)
+            if match is not None:
+                q["correct_answer"] = match
+    return questions
 
 
 GENERATION_PROMPT = """Generate {num_questions} quiz question(s) about the following concept.
@@ -138,6 +160,8 @@ def generate_full_quiz(
         if q.get("concept") not in valid_names and concepts:
             q["concept"] = concepts[0]["name"]
 
+    _repair_mcq_answers(questions)
+
     return {"concepts": concepts, "questions": questions}
 
 
@@ -182,6 +206,7 @@ def generate_questions(
         response_text = response_text.rsplit("```", 1)[0]
 
     questions = json.loads(response_text)
+    _repair_mcq_answers(questions)
     return questions
 
 
