@@ -8,8 +8,6 @@ and provides a level progression system to keep learners engaged.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import json
-from datetime import datetime
 
 
 # XP rewards

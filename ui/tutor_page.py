@@ -13,7 +13,6 @@ import streamlit as st
 from quiz_engine.ai_tutor import (
     chat_with_tutor,
     create_tutor_context,
-    get_concept_explanation,
 )
 
 

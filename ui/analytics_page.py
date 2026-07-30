@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import streamlit as st
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 
 def render_analytics_page():

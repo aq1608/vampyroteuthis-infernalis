@@ -2,6 +2,7 @@
 Quiz Engine - Core logic for the Adaptive Quiz Generator.
 
 Modules:
+- llm: Central model config + resilient client (retry/fallback)
 - content_parser: Parse PDFs and text into structured content
 - concept_extractor: Identify key concepts from content
 - question_generator: Generate quiz questions via Gemini API
@@ -11,6 +12,13 @@ Modules:
 - spaced_repetition: Review scheduling based on mastery
 - persistence: Save/load progress as JSON
 - study_guide: AI-generated study materials
+- ai_tutor: Conversational tutor
+- knowledge_graph: Concept relationship extraction
+- analytics: Learning trends and retention prediction
+- curriculum: 27-topic AI/ML curriculum + guided paths
+- certificate: SVG completion certificates
+- manual_quiz: No-AI manual quiz building
+- question_bank: Offline ready-made question sets
 """
 
 from quiz_engine.content_parser import parse_pdf, parse_text

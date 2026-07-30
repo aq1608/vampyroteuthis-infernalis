@@ -26,7 +26,6 @@ from quiz_engine.curriculum import (
     get_learning_paths,
     get_path_info,
     get_topics,
-    get_topic,
     build_topic_prompt,
     count_total_topics,
     get_path_progress,

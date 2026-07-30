@@ -115,7 +115,7 @@ def generate_study_guide(
             contents=prompt,
         )
         return response.text
-    except Exception as e:
+    except Exception:
         return _generate_fallback_guide(weak_concepts, wrong_answers, percentage)
 
 
