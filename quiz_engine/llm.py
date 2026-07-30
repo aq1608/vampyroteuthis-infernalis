@@ -66,7 +66,7 @@ def _is_model_unavailable(exc: Exception) -> bool:
 
 
 def get_client() -> genai.Client:
-    """Create a Gemini client using the configured API key."""
+    """Create a Gemini client using the configured API key (Google AI Studio)."""
     api_key = os.getenv("GEMINI_API_KEY")
     if api_key:
         return genai.Client(api_key=api_key)
@@ -86,18 +86,18 @@ def _friendly_message(exc: Exception) -> str:
         )
     if "not found" in low or "404" in low or "not supported" in low:
         return (
-            f"The model '{model}' is unavailable for your key. Set a GEMINI_MODEL "
-            "secret to a current model (e.g. gemini-2.5-flash or gemini-3.5-flash)."
+            f"The model '{model}' is unavailable. Set GEMINI_MODEL to a current "
+            "model (e.g. gemini-2.5-flash or gemini-3.5-flash)."
         )
     if "503" in low or "unavailable" in low or "overloaded" in low:
         return (
-            "Gemini is temporarily overloaded (503). We retried and tried backup "
+            "The model is temporarily overloaded (503). We retried and tried backup "
             "models but they're all busy right now - please try again in a moment."
         )
     if "429" in low or "quota" in low or "rate" in low or "resource_exhausted" in low:
         return (
-            "Gemini rate limit / quota reached. Wait a moment and try again, or "
-            "check your usage limits in Google AI Studio."
+            "Rate limit / quota reached. Wait a moment and try again, or check "
+            "your usage limits in Google AI Studio."
         )
     return f"The AI request failed: {text[:200]}"
 

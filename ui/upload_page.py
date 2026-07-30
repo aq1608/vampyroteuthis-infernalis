@@ -12,16 +12,16 @@ Features:
 from __future__ import annotations
 
 import base64
-import json
-import streamlit as st
 import os
-from google import genai
+import streamlit as st
 
 from quiz_engine.content_parser import parse_pdf, parse_text
 from quiz_engine.question_generator import generate_full_quiz
 from quiz_engine.adaptive_logic import AdaptiveEngine
 from quiz_engine.persistence import import_progress
 from quiz_engine.llm import generate_text, GenerationError
+from quiz_engine.manual_quiz import validate_question, build_quiz_from_questions
+from quiz_engine.question_bank import list_bank_topics, get_bank_questions, total_bank_questions
 from quiz_engine.curriculum import (
     get_learning_paths,
     get_path_info,
@@ -84,15 +84,6 @@ def _configure_gemini() -> bool:
     return False
 
 
-def _get_client() -> genai.Client:
-    """Get a configured Gemini client."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if api_key:
-        return genai.Client(api_key=api_key)
-    return genai.Client()
-
-
-
 def _process_content(
     content: str,
     start_difficulty: str = "beginner",
@@ -130,10 +121,35 @@ def _process_content(
         return
 
     if not st.session_state.get("questions") or not st.session_state.get("concepts"):
-        st.error("The AI returned an empty quiz. Try again or pick a different topic.")
+        st.error(
+            "The AI returned an empty quiz. Try again, pick a different topic, "
+            "or use the 'Build Manually' tab."
+        )
         return
 
-    # Initialize adaptive engine
+    _begin_quiz(
+        concepts=st.session_state.concepts,
+        questions=st.session_state.questions,
+        content=content,
+        path_context=path_context,
+    )
+
+
+def _begin_quiz(
+    concepts: list[dict],
+    questions: list[dict],
+    content: str | None = None,
+    path_context: dict | None = None,
+):
+    """
+    Set up session state for a new quiz and navigate to it.
+
+    Shared by both the AI path (_process_content) and the manual builder, so a
+    quiz behaves identically no matter how its questions were created.
+    """
+    st.session_state.concepts = concepts
+    st.session_state.questions = questions
+
     engine = AdaptiveEngine()
     engine.register_concepts(concepts)
     st.session_state.adaptive_engine = engine
@@ -145,7 +161,6 @@ def _process_content(
     # Track guided-path context (or clear it for non-curriculum quizzes)
     st.session_state.path_context = path_context
 
-    # Navigate to quiz page
     st.session_state.page = "quiz"
     st.rerun()
 
@@ -333,13 +348,154 @@ def _render_curriculum_tab(language: str):
         help="Otherwise the quiz starts at beginner and adapts up as you answer.",
     )
 
-    if st.button("Generate Quiz from Curriculum", key="btn_curriculum", type="primary"):
-        if not _configure_gemini():
-            st.error("Please enter your Gemini API key above.")
-            return
-        launch_curriculum_topic(
-            selected_path, selected_topic, language, match_level=match_level
+    # Two ways to practice this topic: AI-generated, or a ready-made offline set
+    offline_questions = get_bank_questions(selected_topic["name"])
+    col_ai, col_offline = st.columns(2)
+
+    with col_ai:
+        if st.button("Generate Quiz (AI)", key="btn_curriculum", type="primary"):
+            if not _configure_gemini():
+                st.error("Please enter your Gemini API key above.")
+            else:
+                launch_curriculum_topic(
+                    selected_path, selected_topic, language, match_level=match_level
+                )
+
+    with col_offline:
+        if offline_questions:
+            if st.button(
+                f"Practice offline ({len(offline_questions)} Qs, no AI)",
+                key="btn_curriculum_offline",
+            ):
+                quiz = build_quiz_from_questions(
+                    offline_questions, title=selected_topic["name"]
+                )
+                _begin_quiz(
+                    concepts=quiz["concepts"],
+                    questions=quiz["questions"],
+                    content=selected_topic["name"],
+                    path_context={"path": selected_path, "topic": selected_topic["name"]},
+                )
+        else:
+            st.caption("No offline set for this topic yet.")
+
+
+def _render_manual_tab():
+    """Render the manual quiz builder - fully functional with no AI/API key."""
+    st.markdown(
+        "Build a quiz yourself - **no API key or AI needed**. "
+        "A reliable backup when the AI is rate-limited or unavailable."
+    )
+
+    st.session_state.setdefault("manual_questions", [])
+    st.session_state.setdefault("manual_form_nonce", 0)
+    nonce = st.session_state.manual_form_nonce
+
+    # Quick-start: load a ready-made offline question set (no AI needed)
+    with st.expander(f"Load a ready-made set ({total_bank_questions()} questions available)", expanded=False):
+        st.caption("Instantly load hand-written questions for a popular AI/ML topic - then edit or start right away.")
+        bank_topic = st.selectbox("Ready-made set", list_bank_topics(), key="bank_topic_select")
+        col_load, col_append = st.columns(2)
+        with col_load:
+            if st.button("Load set", key="btn_bank_load"):
+                st.session_state.manual_questions = get_bank_questions(bank_topic)
+                st.session_state.manual_title = bank_topic
+                st.rerun()
+        with col_append:
+            if st.button("Add to current", key="btn_bank_append"):
+                st.session_state.manual_questions.extend(get_bank_questions(bank_topic))
+                st.rerun()
+
+    title = st.text_input("Quiz title / topic", key="manual_title")
+
+    st.markdown("#### Add a question")
+    q_text = st.text_area("Question", key=f"mq_text_{nonce}")
+    type_label = st.selectbox(
+        "Type",
+        ["Multiple choice", "True / False", "Fill in the blank"],
+        key=f"mq_type_{nonce}",
+    )
+
+    options: list[str] = []
+    correct = ""
+    if type_label == "Multiple choice":
+        c = st.columns(2)
+        o1 = c[0].text_input("Option A", key=f"mq_o1_{nonce}")
+        o2 = c[1].text_input("Option B", key=f"mq_o2_{nonce}")
+        o3 = c[0].text_input("Option C", key=f"mq_o3_{nonce}")
+        o4 = c[1].text_input("Option D", key=f"mq_o4_{nonce}")
+        options = [o1, o2, o3, o4]
+        nonempty = [o for o in options if o.strip()]
+        correct = st.selectbox(
+            "Correct option",
+            nonempty or ["(enter options above)"],
+            key=f"mq_correct_mcq_{nonce}",
         )
+    elif type_label == "True / False":
+        correct = st.radio(
+            "Correct answer", ["True", "False"],
+            key=f"mq_correct_tf_{nonce}", horizontal=True,
+        )
+    else:
+        correct = st.text_input("Correct answer", key=f"mq_correct_fb_{nonce}")
+
+    concept = st.text_input("Concept (optional)", key=f"mq_concept_{nonce}")
+    explanation = st.text_area("Explanation (optional)", key=f"mq_expl_{nonce}")
+
+    if st.button("Add question", key=f"mq_add_{nonce}"):
+        type_map = {
+            "Multiple choice": "mcq",
+            "True / False": "true_false",
+            "Fill in the blank": "fill_blank",
+        }
+        q = {
+            "question": q_text,
+            "type": type_map[type_label],
+            "options": [o for o in options if o.strip()] if type_label == "Multiple choice" else [],
+            "correct_answer": correct,
+            "concept": concept,
+            "explanation": explanation,
+        }
+        err = validate_question(q)
+        if err:
+            st.error(err)
+        else:
+            st.session_state.manual_questions.append(q)
+            st.session_state.manual_form_nonce += 1  # reset the input fields
+            st.rerun()
+
+    # Current draft questions
+    qs = st.session_state.manual_questions
+    st.divider()
+    if qs:
+        st.markdown(f"#### Your questions ({len(qs)})")
+        for i, q in enumerate(qs):
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                st.markdown(
+                    f"**{i + 1}. {q['question']}**  _({q['type']})_  \n"
+                    f"Answer: {q['correct_answer']}"
+                )
+            with col2:
+                if st.button("Remove", key=f"mq_del_{i}"):
+                    st.session_state.manual_questions.pop(i)
+                    st.rerun()
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("Start Quiz", type="primary", key="mq_start"):
+                quiz = build_quiz_from_questions(qs, title=title or "My Quiz")
+                _begin_quiz(
+                    concepts=quiz["concepts"],
+                    questions=quiz["questions"],
+                    content=title or "Manual quiz",
+                )
+        with col_b:
+            if st.button("Clear all", key="mq_clear"):
+                st.session_state.manual_questions = []
+                st.rerun()
+    else:
+        st.caption("Add at least one question above to start your quiz.")
 
 
 def render_upload_page():
@@ -363,12 +519,15 @@ def render_upload_page():
         st.info(f"Quiz will be generated in **{language}**")
 
     # Tab-based input options
-    tab_curriculum, tab_pdf, tab_text, tab_topic = st.tabs(
-        ["AI/ML Curriculum", "Upload PDF", "Paste Text", "Enter Topic"]
+    tab_curriculum, tab_manual, tab_pdf, tab_text, tab_topic = st.tabs(
+        ["AI/ML Curriculum", "Build Manually", "Upload PDF", "Paste Text", "Enter Topic"]
     )
 
     with tab_curriculum:
         _render_curriculum_tab(language)
+
+    with tab_manual:
+        _render_manual_tab()
 
     with tab_pdf:
         uploaded_file = st.file_uploader(
