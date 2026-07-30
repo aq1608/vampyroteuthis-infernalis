@@ -1,0 +1,20 @@
+# Streamlit configuration for the Adaptive Quiz Generator
+# Theme colors match the app's gradient branding (#6C63FF -> #4ECDC4)
+
+[theme]
+primaryColor = "#6C63FF"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5F4FF"
+textColor = "#2C3E50"
+font = "sans serif"
+
+[server]
+# Streamlit Cloud sets the port; these are safe defaults for local runs.
+headless = true
+# Keep XSRF protection on (CORS stays enabled so the two are compatible).
+enableXsrfProtection = true
+# Allow larger uploads for textbook PDFs (in MB)
+maxUploadSize = 25
+
+[browser]
+gatherUsageStats = false
