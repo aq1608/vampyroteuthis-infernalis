@@ -14,6 +14,8 @@ import json
 import os
 from google import genai
 
+from quiz_engine.llm import get_model
+
 
 EXPLANATION_PROMPT = """The student answered a quiz question incorrectly.
 
@@ -135,7 +137,7 @@ def _fuzzy_match(student_answer: str, correct_answer: str) -> bool:
 
 
 def _semantic_evaluate(
-    question: dict, student_answer: str, model_name: str = "gemini-2.0-flash"
+    question: dict, student_answer: str, model_name: str | None = None
 ) -> dict:
     """
     Use Gemini to semantically evaluate a short answer.
@@ -151,7 +153,7 @@ def _semantic_evaluate(
         )
 
         response = client.models.generate_content(
-            model=model_name,
+            model=model_name or get_model(),
             contents=prompt,
         )
         response_text = response.text.strip()
@@ -177,7 +179,7 @@ def _semantic_evaluate(
 
 
 def generate_explanation(
-    question: dict, student_answer: str, model_name: str = "gemini-2.0-flash"
+    question: dict, student_answer: str, model_name: str | None = None
 ) -> dict:
     """
     Generate a helpful explanation for a wrong answer.
@@ -201,7 +203,7 @@ def generate_explanation(
         )
 
         response = client.models.generate_content(
-            model=model_name,
+            model=model_name or get_model(),
             contents=prompt,
         )
         response_text = response.text.strip()

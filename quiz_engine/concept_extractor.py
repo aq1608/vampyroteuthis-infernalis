@@ -8,8 +8,8 @@ that can be used to generate targeted quiz questions.
 from __future__ import annotations
 
 import json
-import os
-from google import genai
+
+from quiz_engine.llm import generate_text, get_model
 
 
 EXTRACTION_PROMPT = """Analyze the following text and extract the key concepts that a student should understand.
@@ -33,17 +33,9 @@ Text:
 Return ONLY the JSON array, no other text."""
 
 
-def _get_client() -> genai.Client:
-    """Get a configured Gemini client."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if api_key:
-        return genai.Client(api_key=api_key)
-    return genai.Client()
-
-
 def extract_concepts(
     content: str,
-    model_name: str = "gemini-2.0-flash",
+    model_name: str | None = None,
     language: str = "English",
 ) -> list[dict]:
     """
@@ -51,23 +43,18 @@ def extract_concepts(
 
     Args:
         content: Text content to analyze.
-        model_name: Gemini model to use.
+        model_name: Gemini model to use (defaults to the configured model).
         language: Language for concept names and descriptions.
 
     Returns:
         List of concept dictionaries with name, description, and importance.
     """
-    client = _get_client()
     prompt = EXTRACTION_PROMPT.format(content=content[:4000])  # Limit input size
 
     if language != "English":
         prompt += f"\n\nIMPORTANT: Write the concept names and descriptions in {language}."
 
-    response = client.models.generate_content(
-        model=model_name,
-        contents=prompt,
-    )
-    response_text = response.text.strip()
+    response_text = generate_text(prompt, model=model_name or get_model()).strip()
 
     # Clean up response - remove markdown code blocks if present
     if response_text.startswith("```"):

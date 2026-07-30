@@ -8,9 +8,10 @@ based on the student's quiz performance and learning level.
 
 from __future__ import annotations
 
-import json
 import os
 from google import genai
+
+from quiz_engine.llm import get_model
 
 
 TUTOR_SYSTEM_PROMPT = """You are a friendly, patient AI tutor helping a student understand concepts
@@ -86,7 +87,7 @@ def create_tutor_context(
 def chat_with_tutor(
     messages: list[dict],
     system_context: str,
-    model_name: str = "gemini-2.0-flash",
+    model_name: str | None = None,
 ) -> str:
     """
     Send a message to the AI tutor and get a response.
@@ -114,7 +115,7 @@ def chat_with_tutor(
             })
 
         response = client.models.generate_content(
-            model=model_name,
+            model=model_name or get_model(),
             contents=contents,
             config={
                 "system_instruction": system_context,
@@ -137,7 +138,7 @@ def get_concept_explanation(
     content: str,
     difficulty: str = "beginner",
     language: str = "English",
-    model_name: str = "gemini-2.0-flash",
+    model_name: str | None = None,
 ) -> str:
     """
     Get a detailed explanation of a specific concept.
@@ -176,7 +177,7 @@ Provide:
     try:
         client = _get_client()
         response = client.models.generate_content(
-            model=model_name,
+            model=model_name or get_model(),
             contents=prompt,
         )
         return response.text

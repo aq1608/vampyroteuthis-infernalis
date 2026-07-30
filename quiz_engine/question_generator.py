@@ -8,8 +8,8 @@ at specified difficulty levels for given concepts.
 from __future__ import annotations
 
 import json
-import os
-from google import genai
+
+from quiz_engine.llm import generate_text, get_model
 
 
 GENERATION_PROMPT = """Generate {num_questions} quiz question(s) about the following concept.
@@ -52,20 +52,12 @@ Return as a JSON array. Example:
 Return ONLY the JSON array, no other text."""
 
 
-def _get_client() -> genai.Client:
-    """Get a configured Gemini client."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if api_key:
-        return genai.Client(api_key=api_key)
-    return genai.Client()
-
-
 def generate_questions(
     concept: dict,
     content: str,
     difficulty: str = "beginner",
     num_questions: int = 2,
-    model_name: str = "gemini-2.0-flash",
+    model_name: str | None = None,
     language: str = "English",
 ) -> list[dict]:
     """
@@ -82,8 +74,6 @@ def generate_questions(
     Returns:
         List of question dictionaries.
     """
-    client = _get_client()
-
     prompt = GENERATION_PROMPT.format(
         num_questions=num_questions,
         concept_name=concept["name"],
@@ -95,11 +85,7 @@ def generate_questions(
     if language != "English":
         prompt += f"\n\nIMPORTANT: Write all questions, options, answers, and explanations in {language}."
 
-    response = client.models.generate_content(
-        model=model_name,
-        contents=prompt,
-    )
-    response_text = response.text.strip()
+    response_text = generate_text(prompt, model=model_name or get_model()).strip()
 
     # Clean up response - remove markdown code blocks if present
     if response_text.startswith("```"):

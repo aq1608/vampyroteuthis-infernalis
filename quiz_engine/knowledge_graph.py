@@ -11,6 +11,8 @@ import json
 import os
 from google import genai
 
+from quiz_engine.llm import get_model
+
 
 RELATIONSHIP_PROMPT = """Given these concepts from a study session, identify the relationships between them.
 
@@ -45,7 +47,7 @@ def _get_client() -> genai.Client:
 
 def extract_relationships(
     concepts: list[dict],
-    model_name: str = "gemini-2.0-flash",
+    model_name: str | None = None,
 ) -> list[dict]:
     """
     Extract relationships between concepts using AI.
@@ -70,7 +72,7 @@ def extract_relationships(
     try:
         client = _get_client()
         response = client.models.generate_content(
-            model=model_name,
+            model=model_name or get_model(),
             contents=prompt,
         )
         response_text = response.text.strip()

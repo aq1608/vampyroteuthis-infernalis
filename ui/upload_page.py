@@ -22,6 +22,7 @@ from quiz_engine.concept_extractor import extract_concepts
 from quiz_engine.question_generator import generate_quiz_batch
 from quiz_engine.adaptive_logic import AdaptiveEngine
 from quiz_engine.persistence import import_progress
+from quiz_engine.llm import generate_text, GenerationError
 from quiz_engine.curriculum import (
     get_learning_paths,
     get_path_info,
@@ -110,19 +111,30 @@ def _process_content(
     """
     language = st.session_state.get("language", "English")
 
-    with st.spinner("Extracting key concepts..."):
-        concepts = extract_concepts(content, language=language)
-        st.session_state.concepts = concepts
+    try:
+        with st.spinner("Extracting key concepts..."):
+            concepts = extract_concepts(content, language=language)
+            st.session_state.concepts = concepts
 
-    with st.spinner("Generating your personalized quiz..."):
-        questions = generate_quiz_batch(
-            concepts=concepts,
-            content=content,
-            difficulty=start_difficulty,
-            questions_per_concept=2,
-            language=language,
-        )
-        st.session_state.questions = questions
+        with st.spinner("Generating your personalized quiz..."):
+            questions = generate_quiz_batch(
+                concepts=concepts,
+                content=content,
+                difficulty=start_difficulty,
+                questions_per_concept=2,
+                language=language,
+            )
+            st.session_state.questions = questions
+    except GenerationError as e:
+        st.error(str(e))
+        return
+    except Exception as e:  # noqa: BLE001 - surface any unexpected failure gracefully
+        st.error(f"Could not generate the quiz. {e}")
+        return
+
+    if not st.session_state.get("questions"):
+        st.error("The AI returned no questions. Try again or pick a different topic.")
+        return
 
     # Initialize adaptive engine
     engine = AdaptiveEngine()
@@ -219,14 +231,16 @@ def launch_curriculum_topic(
     results page. Requires the Gemini API key to be configured.
     """
     start_difficulty = topic["level"] if match_level else "beginner"
-    with st.spinner(f"Preparing study material on '{topic['name']}'..."):
-        client = _get_client()
-        prompt = build_topic_prompt(topic, language=language)
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        content = response.text
+    try:
+        with st.spinner(f"Preparing study material on '{topic['name']}'..."):
+            prompt = build_topic_prompt(topic, language=language)
+            content = generate_text(prompt)
+    except GenerationError as e:
+        st.error(str(e))
+        return
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Could not prepare the topic. {e}")
+        return
     _process_content(
         content,
         start_difficulty=start_difficulty,
@@ -402,18 +416,20 @@ def render_upload_page():
             if not _configure_gemini():
                 st.error("Please enter your Gemini API key above.")
                 return
-            with st.spinner("Generating study material..."):
-                client = _get_client()
-                lang_instruction = f" Write in {language}." if language != "English" else ""
-                response = client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=(
+            lang_instruction = f" Write in {language}." if language != "English" else ""
+            try:
+                with st.spinner("Generating study material..."):
+                    content = generate_text(
                         f"Write a comprehensive educational summary (500-800 words) about: {topic}. "
                         f"Cover the key concepts, important details, and relationships between ideas. "
                         f"Write in a clear, textbook-like style suitable for studying.{lang_instruction}"
-                    ),
-                )
-                content = response.text
+                    )
+            except GenerationError as e:
+                st.error(str(e))
+                return
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Could not generate study material. {e}")
+                return
             _process_content(content)
 
     # Import section at bottom

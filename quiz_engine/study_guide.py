@@ -11,6 +11,8 @@ import os
 from datetime import datetime
 from google import genai
 
+from quiz_engine.llm import get_model
+
 
 STUDY_GUIDE_PROMPT = """Based on the following quiz results, generate a focused study guide
 for the student. Focus on their WEAK areas and provide clear explanations.
@@ -51,7 +53,7 @@ def generate_study_guide(
     answers: list[dict],
     concept_states: dict,
     language: str = "English",
-    model_name: str = "gemini-2.0-flash",
+    model_name: str | None = None,
 ) -> str:
     """
     Generate a Markdown study guide focused on weak areas.
@@ -109,7 +111,7 @@ def generate_study_guide(
     try:
         client = _get_client()
         response = client.models.generate_content(
-            model=model_name,
+            model=model_name or get_model(),
             contents=prompt,
         )
         return response.text
