@@ -52,6 +52,95 @@ Return as a JSON array. Example:
 Return ONLY the JSON array, no other text."""
 
 
+FULL_QUIZ_PROMPT = """You are building a study quiz from the material below.
+
+Do BOTH of these in a single response:
+1. Identify {num_concepts} key concepts a student should understand.
+2. For EACH concept, write {questions_per_concept} quiz questions at "{difficulty}" difficulty.
+
+Rules:
+- Difficulty "beginner": basic recall; "intermediate": application/analysis; "advanced": synthesis/edge cases
+- Mix question types: "mcq" (exactly 4 options, one correct), "true_false", "fill_blank" (short answer)
+- Questions must test understanding, not rote memorization
+- Every question's "concept" field must match one of the concept names exactly
+
+Source Material:
+{content}
+
+Return ONLY this JSON object (no other text):
+{{
+  "concepts": [
+    {{"name": "Concept Name", "description": "One-sentence summary.", "importance": "high"}}
+  ],
+  "questions": [
+    {{
+      "question": "...",
+      "type": "mcq",
+      "options": ["A", "B", "C", "D"],
+      "correct_answer": "A",
+      "concept": "Concept Name",
+      "difficulty": "{difficulty}",
+      "explanation": "Why the answer is correct."
+    }}
+  ]
+}}"""
+
+
+def generate_full_quiz(
+    content: str,
+    difficulty: str = "beginner",
+    num_concepts: int = 4,
+    questions_per_concept: int = 2,
+    model_name: str | None = None,
+    language: str = "English",
+) -> dict:
+    """
+    Generate concepts AND all questions in a SINGLE API call.
+
+    This is the quota-friendly path: one request produces the whole quiz,
+    instead of one call per concept. Returns a dict with "concepts" and
+    "questions" lists. Raises GenerationError (from generate_text) on failure.
+
+    Args:
+        content: Source study material.
+        difficulty: Starting difficulty level.
+        num_concepts: How many concepts to extract.
+        questions_per_concept: Questions to write per concept.
+        model_name: Gemini model to use (defaults to configured model).
+        language: Output language.
+
+    Returns:
+        {"concepts": [...], "questions": [...]}
+    """
+    prompt = FULL_QUIZ_PROMPT.format(
+        num_concepts=num_concepts,
+        questions_per_concept=questions_per_concept,
+        difficulty=difficulty,
+        content=content[:4000],
+    )
+    if language != "English":
+        prompt += f"\n\nIMPORTANT: Write all concept names, descriptions, questions, options, answers, and explanations in {language}."
+
+    response_text = generate_text(prompt, model=model_name or get_model()).strip()
+
+    # Strip markdown code fences if present
+    if response_text.startswith("```"):
+        response_text = response_text.split("\n", 1)[1]
+        response_text = response_text.rsplit("```", 1)[0]
+
+    data = json.loads(response_text)
+    concepts = data.get("concepts", [])
+    questions = data.get("questions", [])
+
+    # Safety: ensure every question references a known concept
+    valid_names = {c["name"] for c in concepts}
+    for q in questions:
+        if q.get("concept") not in valid_names and concepts:
+            q["concept"] = concepts[0]["name"]
+
+    return {"concepts": concepts, "questions": questions}
+
+
 def generate_questions(
     concept: dict,
     content: str,

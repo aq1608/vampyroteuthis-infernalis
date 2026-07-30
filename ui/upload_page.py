@@ -18,8 +18,7 @@ import os
 from google import genai
 
 from quiz_engine.content_parser import parse_pdf, parse_text
-from quiz_engine.concept_extractor import extract_concepts
-from quiz_engine.question_generator import generate_quiz_batch
+from quiz_engine.question_generator import generate_full_quiz
 from quiz_engine.adaptive_logic import AdaptiveEngine
 from quiz_engine.persistence import import_progress
 from quiz_engine.llm import generate_text, GenerationError
@@ -112,19 +111,17 @@ def _process_content(
     language = st.session_state.get("language", "English")
 
     try:
-        with st.spinner("Extracting key concepts..."):
-            concepts = extract_concepts(content, language=language)
-            st.session_state.concepts = concepts
-
-        with st.spinner("Generating your personalized quiz..."):
-            questions = generate_quiz_batch(
-                concepts=concepts,
+        # Single API call generates BOTH concepts and questions (quota-friendly)
+        with st.spinner("Building your personalized quiz..."):
+            quiz = generate_full_quiz(
                 content=content,
                 difficulty=start_difficulty,
+                num_concepts=4,
                 questions_per_concept=2,
                 language=language,
             )
-            st.session_state.questions = questions
+            st.session_state.concepts = quiz["concepts"]
+            st.session_state.questions = quiz["questions"]
     except GenerationError as e:
         st.error(str(e))
         return
@@ -132,8 +129,8 @@ def _process_content(
         st.error(f"Could not generate the quiz. {e}")
         return
 
-    if not st.session_state.get("questions"):
-        st.error("The AI returned no questions. Try again or pick a different topic.")
+    if not st.session_state.get("questions") or not st.session_state.get("concepts"):
+        st.error("The AI returned an empty quiz. Try again or pick a different topic.")
         return
 
     # Initialize adaptive engine
