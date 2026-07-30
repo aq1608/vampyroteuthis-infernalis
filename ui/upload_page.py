@@ -39,6 +39,7 @@ from quiz_engine.certificate import (
     compute_path_average_score,
 )
 from ui.styles import render_hero, render_feature_cards
+from ui.quiz_page import clear_quiz_widget_state
 
 
 def _render_curriculum_certificate(path_name: str):
@@ -151,6 +152,10 @@ def _begin_quiz(
     """
     st.session_state.concepts = concepts
     st.session_state.questions = questions
+
+    # Clear stale per-question flags/answers from any previous quiz so this
+    # quiz's questions aren't skipped as "already answered".
+    clear_quiz_widget_state()
 
     engine = AdaptiveEngine()
     engine.register_concepts(concepts)

@@ -17,6 +17,23 @@ from quiz_engine.evaluator import evaluate_answer
 from ui.styles import render_difficulty_badge
 
 
+# Prefixes of the per-question session keys created while taking a quiz. These
+# are indexed by question number and MUST be cleared when a new quiz starts,
+# otherwise stale "already answered" flags make the next quiz skip its early
+# questions (recording only the last one).
+_QUIZ_WIDGET_PREFIXES = ("feedback_shown_", "answer_", "timer_start_", "time_up_")
+
+
+def clear_quiz_widget_state():
+    """Remove per-question widget/flag keys left over from a previous quiz."""
+    stale = [
+        k for k in list(st.session_state.keys())
+        if k.startswith(_QUIZ_WIDGET_PREFIXES)
+    ]
+    for k in stale:
+        del st.session_state[k]
+
+
 def _render_question(question: dict):
     """Render a single question based on its type."""
     st.markdown(f"**{question['question']}**")

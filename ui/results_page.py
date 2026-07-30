@@ -354,6 +354,24 @@ def _render_codepassing_leaderboard(imported: dict):
         )
 
 
+def _render_answer_review():
+    """List every question answered this quiz, with the student's answer."""
+    answers = st.session_state.get("answers", [])
+    st.markdown(f"### Review your answers ({len(answers)})")
+    if not answers:
+        st.caption("No answers recorded for this quiz.")
+        return
+    with st.expander("Show all questions", expanded=False):
+        for i, a in enumerate(answers):
+            q = a.get("question", {})
+            mark = "✅" if a.get("is_correct") else "❌"
+            st.markdown(f"**{i + 1}. {mark} {q.get('question', '')}**")
+            st.caption(
+                f"Your answer: {a.get('student_answer', '—') or '(blank)'}"
+                f"  ·  Correct: {q.get('correct_answer', '—')}"
+            )
+
+
 def _render_recommendations(engine):
     """Render study recommendations."""
     st.markdown("### Recommendations")
@@ -497,6 +515,10 @@ def render_results_page():
 
     # Concept breakdown
     _render_concept_breakdown(engine)
+    st.divider()
+
+    # Per-question review
+    _render_answer_review()
     st.divider()
 
     # Recommendations

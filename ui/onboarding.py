@@ -194,6 +194,9 @@ def _render_try_it():
 def _start_sample_quiz():
     """Start the sample quiz without needing an API key."""
     from quiz_engine.adaptive_logic import AdaptiveEngine
+    from ui.quiz_page import clear_quiz_widget_state
+
+    clear_quiz_widget_state()
 
     engine = AdaptiveEngine()
     engine.register_concepts(SAMPLE_CONCEPTS)
